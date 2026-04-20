@@ -38,8 +38,8 @@ def save_data(data):
         }
         cleaned_data.append(coin_info)
 
-        with open (coins_data, 'w') as f:
-            json.dump(cleaned_data, f, indent=4)
+    with open (coins_data, 'w') as f:
+        json.dump(cleaned_data, f, indent=4)
 
 data = get_data()
 save_data(data)
