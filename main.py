@@ -6,120 +6,158 @@ from dotenv import load_dotenv
 import time
 
 load_dotenv()
+
 coins_data = Path("coins_data.json")
 
+# store alerted coins (anti-spam)
+alerted_coins = set()
 
+#Get data from API
 def get_data():
     url = "https://openapiv1.coinstats.app/coins?limit=100"
     API_KEY = os.getenv("API_KEY")
 
-    headers  = {
-        "X-API-KEY" : API_KEY
+    headers = {
+        "X-API-KEY": API_KEY
     }
 
-    response = requests.get(url, headers= headers)
-    if response.status_code == 200:
-        data = response.json()
-        return data
-    else:
-        print("API Error")
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print("API Error")
+            return None
+    except requests.exceptions.RequestException:
+        print("Network Error")
+        return None
+
 
 def save_data(data):
     cleaned_data = []
 
     for coin in data['result']:
         coin_info = {
-            "Name" : coin['id'],
-            "Symbol" : coin['symbol'],
-            "Rank" : coin['rank'],
-            "Price" : round(coin['price'], 3),
-            "Change 1H" : coin['priceChange1h'],
-            "Change 1D" : coin['priceChange1d'],
-            "Change 1W" : coin['priceChange1w']
+            "Symbol": coin['symbol'],
+            "Price": round(coin['price'], 3)
         }
         cleaned_data.append(coin_info)
 
-    with open (coins_data, 'w') as f:
+    with open(coins_data, 'w') as f:
         json.dump(cleaned_data, f, indent=4)
 
-def load_data(coins_data):
+
+def load_data():
     if not coins_data.exists():
         return []
-    
+
     try:
         with open(coins_data, 'r') as f:
-            data = json.load(f)
-            return data
+            return json.load(f)
     except json.JSONDecodeError:
         return []
 
+#Telegram Message Send 
 def send_telegram(message):
-    
-    Token = os.getenv("Telegram_Api")
-    Chat_id = os.getenv("CHAT_ID")
+    TOKEN = os.getenv("Telegram_Api")
+    CHAT_ID = os.getenv("CHAT_ID")
 
-    url = f"https://api.telegram.org/bot{Token}/sendMessage"
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
     data = {
-        "chat_id": Chat_id,
-        "text" : message
+        "chat_id": CHAT_ID,
+        "text": message
     }
 
     try:
         requests.post(url, data=data, timeout=5)
-    except requests.exceptions.Timeout:
-        print("The Request Timed OUT...")
+    except requests.exceptions.RequestException:
+        print("Telegram Error")
 
-def caluclate_change():
+
+def calculate_change():
     change_result = []
 
-    old_data = load_data(coins_data)
+    old_data = load_data()
     new_data = get_data()
 
-    for coins in new_data['result']:
-        new_symbol = coins['symbol']
-        new_Price = coins['price']
+    if not new_data or not old_data:
+        return []
 
-        for coin in old_data:
-            old_Symbol = coin["Symbol"]
-            old_price = coin["Price"]
+    # convert old_data into dictionary for fast lookup
+    old_prices = {coin["Symbol"]: coin["Price"] for coin in old_data}
 
-            if new_symbol == old_Symbol:
-                try:
-                    calculate = round(((new_Price - old_price) / old_price) * 100, 2)
-                    new_data = {
-                        "Symbol" : new_symbol,
-                        "Change" : calculate
-                    }
-                    change_result.append(new_data)  
-                    
-                except ZeroDivisionError:
-                    pass
-                break
+    for coin in new_data['result']:
+        symbol = coin['symbol']
+        new_price = coin['price']
 
-    with open("result.json", 'w') as f:
-        json.dump(change_result, f , indent=4)
-    
+        if symbol in old_prices:
+            old_price = old_prices[symbol]
+
+            if old_price == 0:
+                continue
+
+            change = round(((new_price - old_price) / old_price) * 100, 2)
+
+            change_result.append({
+                "Symbol": symbol,
+                "Change": change
+            })
+
     return change_result
 
+#Alerts
 def check_alerts(change_result):
+    global alerted_coins
 
     for coin in change_result:
-
         name = coin['Symbol']
+        change = coin['Change']
 
-        if coin['Change'] >= 2:
-            send_telegram(f"🚀 {name} +{coin['Change']}%")
-        elif coin['Change'] <= -2:
-            send_telegram(f"⚠️  {name} {coin['Change']}%")
+        #Pump
+        if change >= 2:
+            if name not in alerted_coins:
+                send_telegram(f"🚀 {name} +{change}%")
+                alerted_coins.add(name)
+
+        #Dump
+        elif change <= -2:
+            if name not in alerted_coins:
+                send_telegram(f"⚠️ {name} {change}%")
+                alerted_coins.add(name)
+
+        elif -1 < change < 1:
+            if name in alerted_coins:
+                alerted_coins.remove(name)
+
+#Run Actual Bot
+def run_bot():
+    print("Bot started...\n")
+
+    #Get new Data
+    data = get_data()
+    if data:
+        save_data(data)
+
+    while True:
+        try:
+            print("Running cycle...")
+
+            change_result = calculate_change()
+
+            if change_result:
+                check_alerts(change_result)
+
+            new_data = get_data()
+            if new_data:
+                save_data(new_data)
+
+            print("Waiting 5 minutes...\n")
+            time.sleep(5 * 60)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(10)
 
 
-# data = get_data()
-# save_data(data)
-
-# print(caluclate_change())
-data2 = caluclate_change()
-while True:
-    check_alerts(data2)
-    time.sleep(5 * 60)
-
+run_bot()
