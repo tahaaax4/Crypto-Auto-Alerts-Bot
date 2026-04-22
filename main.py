@@ -139,22 +139,23 @@ def run_bot():
     run_time = "05:00 am"
 
     while True:
-        
-        now = datetime.now()
-        formatted_time = now.strftime("%I:%M %p").lower()
-        today_date = now.strftime("%d-%m-%Y")
-
-        if formatted_time == run_time and today_date != last_run_date:
-            data = get_data()
-            if data:
-                save_data(data)
-        print("Date Saved for: ", today_date)
-        last_run_date = today_date
-
-        time.sleep(30)
-
 
         try:
+            now = datetime.now()
+            formatted_time = now.strftime("%I:%M %p").lower()
+            today_date = now.strftime("%d-%m-%Y")
+
+            if formatted_time == run_time and today_date != last_run_date:
+
+                data = get_data()
+                if data:
+                    save_data(data)
+
+                print("Date Saved for: ", today_date)
+
+                last_run_date = today_date
+
+
             print("Running cycle...")
 
             change_result = calculate_change()
@@ -173,5 +174,10 @@ def run_bot():
             print(f"Error: {e}")
             time.sleep(10)
 
+while True:
 
-run_bot()
+    try:
+        run_bot()
+    except Exception as e:
+        print("Bot Crashed Restarting...", e)
+        time.sleep(5)
