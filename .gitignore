@@ -1,2 +1,4 @@
 .env
 coins_data.json
+result.json
+bot.py
