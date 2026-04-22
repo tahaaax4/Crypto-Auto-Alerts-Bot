@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import time
+from datetime import datetime
 
 load_dotenv()
 
@@ -134,12 +135,25 @@ def check_alerts(change_result):
 def run_bot():
     print("Bot started...\n")
 
-    #Get new Data
-    data = get_data()
-    if data:
-        save_data(data)
+    last_run_date = None
+    run_time = "05:00 am"
 
     while True:
+        
+        now = datetime.now()
+        formatted_time = now.strftime("%I:%M %p").lower()
+        today_date = now.strftime("%d-%m-%Y")
+
+        if formatted_time == run_time and today_date != last_run_date:
+            data = get_data()
+            if data:
+                save_data(data)
+        print("Date Saved for: ", today_date)
+        last_run_date = today_date
+
+        time.sleep(30)
+
+
         try:
             print("Running cycle...")
 
